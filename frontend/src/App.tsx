@@ -25,7 +25,7 @@ function App() {
     setAnalysis(null)
 
     try {
-      const response = await fetch('http://meeting-agent-production-ba4f.up.railway.app/analyse', { //http://127.0.0.1:8000/analyse
+      const response = await fetch('https://meeting-agent-production-ba4f.up.railway.app/analyse', { //http://127.0.0.1:8000/analyse
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ transcript }),

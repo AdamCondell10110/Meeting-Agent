@@ -13,6 +13,13 @@ interface Analysis {
   decisions: string[]
 }
 
+type AnalysisMode = 'quick' | 'deep'
+
+const MODE_LABELS: Record<AnalysisMode, string> = {
+  quick: 'Quick summary',
+  deep: 'Deep analysis',
+}
+
 function Spinner() {
   return (
     <svg
@@ -42,6 +49,8 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [uploadedFileName, setUploadedFileName] = useState<string | null>(null)
+  const [analysisMode, setAnalysisMode] = useState<AnalysisMode>('deep')
+  const [lastAnalysisMode, setLastAnalysisMode] = useState<AnalysisMode | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const resetFileInput = (input: HTMLInputElement) => {
@@ -94,18 +103,20 @@ function App() {
     setLoading(true)
     setError('')
     setAnalysis(null)
+    setLastAnalysisMode(null)
 
     try {
       const response = await fetch('https://meeting-agent-production-ba4f.up.railway.app/analyse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ transcript }),
+        body: JSON.stringify({ transcript, mode: analysisMode }),
       })
 
       if (!response.ok) throw new Error('Something went wrong')
 
       const data = await response.json()
       setAnalysis(data)
+      setLastAnalysisMode(analysisMode)
     } catch {
       setError('Failed to analyse transcript. Is the backend running?')
     } finally {
@@ -174,6 +185,36 @@ function App() {
               : 'No transcript yet · Supports .txt, .docx, .doc'}
         </p>
 
+        <div className="mt-4">
+          <p className="mb-2 text-sm font-medium text-zinc-700 dark:text-zinc-300">Analysis mode</p>
+          <div
+            className="inline-flex w-full rounded-xl border border-zinc-200 bg-zinc-100 p-1 dark:border-zinc-700 dark:bg-zinc-800 sm:w-auto"
+            role="group"
+            aria-label="Analysis mode"
+          >
+            {(['quick', 'deep'] as const).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                aria-pressed={analysisMode === mode}
+                onClick={() => setAnalysisMode(mode)}
+                className={`flex-1 rounded-lg px-4 py-2 text-sm font-medium transition-colors sm:flex-none ${
+                  analysisMode === mode
+                    ? 'bg-white text-zinc-900 shadow-sm dark:bg-zinc-900 dark:text-zinc-50'
+                    : 'text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-200'
+                }`}
+              >
+                {MODE_LABELS[mode]}
+              </button>
+            ))}
+          </div>
+          <p className="mt-2 text-xs text-zinc-400 dark:text-zinc-500">
+            {analysisMode === 'quick'
+              ? 'Summary only — faster.'
+              : 'Full breakdown with action items, decisions, and risks.'}
+          </p>
+        </div>
+
         <button
           type="button"
           onClick={analyse}
@@ -210,6 +251,11 @@ function App() {
 
       {analysis && (
         <div className="mt-10 space-y-6 opacity-0 animate-[fadeIn_0.4s_ease-out_forwards]">
+          {lastAnalysisMode && (
+            <span className="inline-block rounded-full bg-brand-500/10 px-3 py-1 text-xs font-medium text-brand-700 dark:text-brand-300">
+              {MODE_LABELS[lastAnalysisMode]}
+            </span>
+          )}
           <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
             <h2 className="mb-3 flex items-center gap-2 text-lg font-semibold text-zinc-900 dark:text-zinc-50">
               <span className="flex size-8 items-center justify-center rounded-lg bg-brand-500/10 text-brand-600 dark:text-brand-400">
@@ -222,6 +268,7 @@ function App() {
             <p className="text-lg leading-relaxed text-zinc-800 dark:text-zinc-100">{analysis.summary}</p>
           </section>
 
+          {lastAnalysisMode === 'deep' && (
           <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
             <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-zinc-900 dark:text-zinc-50">
               <span className="flex size-8 items-center justify-center rounded-lg bg-brand-500/10 text-brand-600 dark:text-brand-400">
@@ -265,7 +312,9 @@ function App() {
               <EmptyState message="No action items identified." />
             )}
           </section>
+          )}
 
+          {lastAnalysisMode === 'deep' && (
           <div className="grid gap-6 md:grid-cols-2">
             <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
               <h2 className="mb-4 flex items-center gap-2 text-lg font-semibold text-zinc-900 dark:text-zinc-50">
@@ -322,6 +371,7 @@ function App() {
               )}
             </section>
           </div>
+          )}
         </div>
       )}
     </div>

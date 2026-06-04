@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 
 interface ActionItem {
   owner: string
@@ -41,7 +41,55 @@ function App() {
   const [analysis, setAnalysis] = useState<Analysis | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [uploadedFileName, setUploadedFileName] = useState<string | null>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const resetFileInput = (input: HTMLInputElement) => {
+    input.value = ''
+  }
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    const lowerName = file.name.toLowerCase()
+
+    if (lowerName.endsWith('.txt')) {
+      const reader = new FileReader()
+      reader.onerror = () => setError('Failed to read file.')
+      reader.onload = (event) => {
+        const text = event.target?.result
+        if (typeof text !== 'string') return
+        setTranscript(text)
+        setUploadedFileName(file.name)
+        setError('')
+        resetFileInput(e.target)
+      }
+      reader.readAsText(file)
+    } else if (lowerName.endsWith('.docx') || lowerName.endsWith('.doc')) {
+      const reader = new FileReader()
+      reader.onerror = () => setError('Failed to read file.')
+      reader.onload = async (event) => {
+        const arrayBuffer = event.target?.result
+        if (!(arrayBuffer instanceof ArrayBuffer)) return
+        try {
+          const mammoth = await import('mammoth')
+          const result = await mammoth.extractRawText({ arrayBuffer })
+          setTranscript(result.value)
+          setUploadedFileName(file.name)
+          setError('')
+          resetFileInput(e.target)
+        } catch {
+          setError('Failed to read file.')
+          resetFileInput(e.target)
+        }
+      }
+      reader.readAsArrayBuffer(file)
+    } else {
+      setError('Unsupported file type. Please upload a .txt, .docx or .doc file.')
+      resetFileInput(e.target)
+    }
+  }
   const analyse = async () => {
     setLoading(true)
     setError('')
@@ -75,23 +123,55 @@ function App() {
           Meeting Intelligence Assistant
         </h1>
         <p className="mt-2 text-base text-zinc-500 dark:text-zinc-400">
-          Paste a meeting transcript and get instant analysis.
+          Paste a transcript or upload a file and get instant analysis.
         </p>
       </header>
 
       <section className="rounded-2xl border border-zinc-200 bg-white p-6 shadow-sm ring-1 ring-zinc-900/5 dark:border-zinc-800 dark:bg-zinc-900 dark:ring-white/10">
-        <label htmlFor="transcript" className="mb-2 block text-sm font-medium text-zinc-700 dark:text-zinc-300">
-          Meeting transcript
-        </label>
+        <div className="mb-2 flex items-center justify-between gap-3">
+          <label htmlFor="transcript" className="text-sm font-medium text-zinc-700 dark:text-zinc-300">
+            Meeting transcript
+          </label>
+          <input
+            ref={fileInputRef}
+            id="transcript-file"
+            type="file"
+            accept=".txt,.doc,.docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            className="sr-only"
+            onChange={handleFileUpload}
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-1.5 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+          >
+            <svg className="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"
+              />
+            </svg>
+            Upload file
+          </button>
+        </div>
         <textarea
           id="transcript"
           className="min-h-[220px] w-full resize-y rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 font-mono text-sm text-zinc-800 placeholder:text-zinc-400 transition-colors focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100 dark:placeholder:text-zinc-500 dark:focus:border-brand-400"
           placeholder="Paste your meeting transcript here..."
           value={transcript}
-          onChange={(e) => setTranscript(e.target.value)}
+          onChange={(e) => {
+            setTranscript(e.target.value)
+            setUploadedFileName(null)
+          }}
         />
         <p className="mt-2 text-xs text-zinc-400 dark:text-zinc-500">
-          {transcript.length > 0 ? `${transcript.length.toLocaleString()} characters` : 'No transcript yet'}
+          {uploadedFileName
+            ? `Loaded: ${uploadedFileName} · ${transcript.length.toLocaleString()} characters`
+            : transcript.length > 0
+              ? `${transcript.length.toLocaleString()} characters`
+              : 'No transcript yet · Supports .txt, .docx, .doc'}
         </p>
 
         <button

@@ -1,0 +1,171 @@
+import { jsPDF } from 'jspdf'
+
+interface ActionItem {
+  owner: string
+  task: string
+  deadline: string
+}
+
+interface Analysis {
+  summary: string
+  action_items: ActionItem[]
+  risks: string[]
+  decisions: string[]
+}
+
+type AnalysisMode = 'quick' | 'deep'
+
+const PAGE_WIDTH = 210
+const PAGE_HEIGHT = 297
+const MARGIN = 15
+const CONTENT_WIDTH = PAGE_WIDTH - MARGIN * 2
+const BOTTOM_LIMIT = PAGE_HEIGHT - 20
+
+function checkPageBreak(doc: jsPDF, y: number, needed = 10): number {
+  if (y + needed > BOTTOM_LIMIT) {
+    doc.addPage()
+    return 20
+  }
+  return y
+}
+
+function addSectionHeader(doc: jsPDF, title: string, y: number): number {
+  y = checkPageBreak(doc, y, 14)
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(12)
+  doc.setTextColor(30, 30, 30)
+  doc.text(title.toUpperCase(), MARGIN, y)
+  y += 2
+  doc.setDrawColor(200, 200, 200)
+  doc.line(MARGIN, y, PAGE_WIDTH - MARGIN, y)
+  return y + 6
+}
+
+function addBodyText(doc: jsPDF, text: string, y: number): number {
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(10)
+  doc.setTextColor(60, 60, 60)
+  const lines = doc.splitTextToSize(text, CONTENT_WIDTH) as string[]
+  for (const line of lines) {
+    y = checkPageBreak(doc, y, 6)
+    doc.text(line, MARGIN, y)
+    y += 5.5
+  }
+  return y
+}
+
+function addBulletList(doc: jsPDF, items: string[], y: number): number {
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(10)
+  doc.setTextColor(60, 60, 60)
+  for (const item of items) {
+    const lines = doc.splitTextToSize(item, CONTENT_WIDTH - 5) as string[]
+    y = checkPageBreak(doc, y, 6)
+    doc.text('•', MARGIN, y)
+    doc.text(lines[0], MARGIN + 5, y)
+    y += 5.5
+    for (let i = 1; i < lines.length; i++) {
+      y = checkPageBreak(doc, y, 6)
+      doc.text(lines[i], MARGIN + 5, y)
+      y += 5.5
+    }
+  }
+  return y
+}
+
+export function exportToPdf(analysis: Analysis, mode: AnalysisMode): void {
+  const doc = new jsPDF({ unit: 'mm', format: 'a4' })
+
+  const today = new Date()
+  const dateStr = today.toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })
+  const fileName = `meeting-analysis-${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}.pdf`
+
+  // Header
+  doc.setFont('helvetica', 'bold')
+  doc.setFontSize(18)
+  doc.setTextColor(20, 20, 20)
+  doc.text('Meeting Intelligence Assistant', MARGIN, 22)
+
+  doc.setFont('helvetica', 'normal')
+  doc.setFontSize(9)
+  doc.setTextColor(120, 120, 120)
+  doc.text(dateStr, PAGE_WIDTH - MARGIN, 22, { align: 'right' })
+
+  const modeLabel = mode === 'quick' ? 'Quick Summary' : 'Deep Analysis'
+  doc.text(modeLabel, PAGE_WIDTH - MARGIN, 27, { align: 'right' })
+
+  doc.setDrawColor(180, 180, 180)
+  doc.line(MARGIN, 30, PAGE_WIDTH - MARGIN, 30)
+
+  let y = 38
+
+  // Summary
+  y = addSectionHeader(doc, 'Summary', y)
+  y = addBodyText(doc, analysis.summary, y)
+  y += 6
+
+  if (mode === 'deep') {
+    // Action Items
+    y = addSectionHeader(doc, 'Action Items', y)
+    if (analysis.action_items.length === 0) {
+      y = addBodyText(doc, 'No action items identified.', y)
+    } else {
+      // Table header
+      doc.setFont('helvetica', 'bold')
+      doc.setFontSize(9)
+      doc.setTextColor(80, 80, 80)
+      doc.text('OWNER', MARGIN, y)
+      doc.text('TASK', MARGIN + 38, y)
+      doc.text('DEADLINE', MARGIN + 130, y)
+      y += 2
+      doc.setDrawColor(220, 220, 220)
+      doc.line(MARGIN, y, PAGE_WIDTH - MARGIN, y)
+      y += 4
+
+      doc.setFont('helvetica', 'normal')
+      doc.setFontSize(10)
+      for (const item of analysis.action_items) {
+        const taskLines = doc.splitTextToSize(item.task, 88) as string[]
+        const rowHeight = Math.max(taskLines.length * 5.5, 5.5)
+        y = checkPageBreak(doc, y, rowHeight + 3)
+        doc.setTextColor(80, 80, 120)
+        doc.text(item.owner || '—', MARGIN, y, { maxWidth: 34 })
+        doc.setTextColor(60, 60, 60)
+        doc.text(taskLines, MARGIN + 38, y)
+        doc.text(item.deadline || '—', MARGIN + 130, y, { maxWidth: 45 })
+        y += rowHeight + 2
+      }
+    }
+    y += 6
+
+    // Decisions
+    y = addSectionHeader(doc, 'Decisions', y)
+    if (analysis.decisions.length === 0) {
+      y = addBodyText(doc, 'No decisions recorded.', y)
+    } else {
+      y = addBulletList(doc, analysis.decisions, y)
+    }
+    y += 6
+
+    // Risks
+    y = addSectionHeader(doc, 'Risks', y)
+    if (analysis.risks.length === 0) {
+      y = addBodyText(doc, 'No risks flagged.', y)
+    } else {
+      y = addBulletList(doc, analysis.risks, y)
+    }
+  }
+
+  // Footer on each page
+  const totalPages = doc.getNumberOfPages()
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i)
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(8)
+    doc.setTextColor(160, 160, 160)
+    doc.text(`Page ${i} of ${totalPages}`, PAGE_WIDTH - MARGIN, PAGE_HEIGHT - 8, { align: 'right' })
+    doc.text('Generated by Meeting Intelligence Assistant', MARGIN, PAGE_HEIGHT - 8)
+  }
+
+  doc.save(fileName)
+}

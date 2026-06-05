@@ -255,7 +255,7 @@ function App() {
     setChatError('')
 
     try {
-      const response = await fetch('http://meeting-agent-production-ba4f.up.railway.app/chat', {
+      const response = await fetch('https://meeting-agent-production-ba4f.up.railway.app/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ transcript, analysis, messages: nextMessages }),

@@ -46,7 +46,7 @@ function App() {
     <div className="mx-auto min-h-dvh max-w-3xl px-5 py-10 sm:px-6 sm:py-14">
       <header className="mb-10 text-center">
         <div className="mx-auto mb-4 flex size-14 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-500/20 to-brand-600/10 ring-1 ring-brand-500/30">
-          <img src="/favicon.svg" alt="" className="size-8" aria-hidden />
+          <img src="/logo.svg" alt="" className="size-8" aria-hidden />
         </div>
         <h1 className="text-3xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50 sm:text-4xl">
           Meeting Summary Agent

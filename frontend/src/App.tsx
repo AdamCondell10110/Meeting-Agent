@@ -3,7 +3,7 @@ import ReactMarkdown from 'react-markdown'
 import { exportToPdf } from './exportPdf'
 
 interface ActionItem {
-  owner: string
+  owner: string 
   task: string
   deadline: string
 }
@@ -20,6 +20,28 @@ type AnalysisMode = 'quick' | 'deep'
 interface Message {
   role: 'user' | 'assistant'
   content: string
+}
+
+declare global {
+  interface Window {
+    google: {
+      accounts: {
+        oauth2: {
+          initTokenClient: (config: {
+            client_id: string
+            scope: string
+            callback: (response: { access_token?: string }) => void
+          }) => { requestAccessToken: () => void }
+        }
+      }
+    }
+  }
+}
+
+interface ComposeEmail {
+  to: string
+  subject: string
+  body: string
 }
 
 const MODE_LABELS: Record<AnalysisMode, string> = {
@@ -64,6 +86,12 @@ function App() {
   const [chatInput, setChatInput] = useState('')
   const [chatLoading, setChatLoading] = useState(false)
   const [chatError, setChatError] = useState('')
+  const [gmailToken, setGmailToken] = useState<string | null>(null)
+  const [gmailUser, setGmailUser] = useState<string | null>(null)
+  const [composeEmail, setComposeEmail] = useState<ComposeEmail | null>(null)
+  const [sendingEmail, setSendingEmail] = useState(false)
+  const [emailSentSuccess, setEmailSentSuccess] = useState(false)
+  const [emailError, setEmailError] = useState('')
 
   const resetFileInput = (input: HTMLInputElement) => {
     input.value = ''
@@ -120,7 +148,7 @@ function App() {
     setChatError('')
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/analyse', {
+      const response = await fetch('https://meeting-agent-production-ba4f.up.railway.app/analyse', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ transcript, mode: analysisMode }),
@@ -138,6 +166,83 @@ function App() {
     }
   }
 
+  const parseEmailDraft = (content: string): { subject: string; body: string } => {
+    const lines = content.split('\n')
+    const subjectLine = lines.find((l) => l.toLowerCase().startsWith('subject:'))
+    if (subjectLine) {
+      const subject = subjectLine.replace(/^subject:\s*/i, '').trim()
+      const body = lines.filter((l) => l !== subjectLine).join('\n').trimStart()
+      return { subject, body }
+    }
+    return { subject: '', body: content }
+  }
+
+  const connectGmail = () => {
+    const tokenClient = window.google.accounts.oauth2.initTokenClient({
+      client_id: import.meta.env.VITE_GOOGLE_CLIENT_ID as string,
+      scope: 'https://www.googleapis.com/auth/gmail.send email',
+      callback: (response) => {
+        if (!response.access_token) return
+        setGmailToken(response.access_token)
+        fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: { Authorization: `Bearer ${response.access_token}` },
+        })
+          .then((r) => r.json())
+          .then((info: { email?: string }) => setGmailUser(info.email ?? null))
+      },
+    })
+    tokenClient.requestAccessToken()
+  }
+
+  const buildMimeMessage = (to: string, subject: string, body: string, from: string): string => {
+    const message = [
+      `From: ${from}`,
+      `To: ${to}`,
+      `Subject: ${subject}`,
+      'MIME-Version: 1.0',
+      'Content-Type: text/plain; charset=utf-8',
+      '',
+      body,
+    ].join('\r\n')
+    const bytes = new TextEncoder().encode(message)
+    const binary = Array.from(bytes, (b) => String.fromCharCode(b)).join('')
+    return btoa(binary)
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '')
+  }
+
+  const sendViaGmail = async () => {
+    if (!composeEmail || !gmailToken || !gmailUser) return
+    setSendingEmail(true)
+    setEmailError('')
+    try {
+      const raw = buildMimeMessage(composeEmail.to, composeEmail.subject, composeEmail.body, gmailUser)
+      const response = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${gmailToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ raw }),
+      })
+      if (response.status === 401) {
+        setGmailToken(null)
+        throw new Error('Gmail session expired — please reconnect.')
+      }
+      if (!response.ok) {
+        const err = await response.json() as { error?: { message?: string } }
+        throw new Error(err.error?.message ?? 'Failed to send email')
+      }
+      setEmailSentSuccess(true)
+      setTimeout(() => setComposeEmail(null), 2000)
+    } catch (e) {
+      setEmailError(e instanceof Error ? e.message : 'Failed to send email')
+    } finally {
+      setSendingEmail(false)
+    }
+  }
+
   const sendMessage = async () => {
     const text = chatInput.trim()
     if (!text || chatLoading || !analysis) return
@@ -150,7 +255,7 @@ function App() {
     setChatError('')
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/chat', {
+      const response = await fetch('http://meeting-agent-production-ba4f.up.railway.app/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ transcript, analysis, messages: nextMessages }),
@@ -273,6 +378,40 @@ function App() {
           )}
         </button>
       </section>
+
+      {gmailToken ? (
+        <div className="mt-4 flex items-center justify-between rounded-2xl border border-emerald-200 bg-emerald-50 px-5 py-3.5 shadow-sm dark:border-emerald-900/40 dark:bg-emerald-950/30">
+          <span className="flex items-center gap-2 text-sm font-medium text-emerald-700 dark:text-emerald-400">
+            <svg className="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            {gmailUser ?? 'Gmail connected'}
+          </span>
+          <button
+            type="button"
+            onClick={() => { setGmailToken(null); setGmailUser(null) }}
+            className="text-sm text-emerald-600 underline hover:text-emerald-800 dark:text-emerald-400 dark:hover:text-emerald-200"
+          >
+            Disconnect
+          </button>
+        </div>
+      ) : (
+        <div className="mt-4 flex items-center justify-between rounded-2xl border border-zinc-200 bg-white px-5 py-3.5 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
+          <span className="flex items-center gap-2 text-sm text-zinc-500 dark:text-zinc-400">
+            <svg className="size-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+            </svg>
+            Connect Gmail to send follow-up emails
+          </span>
+          <button
+            type="button"
+            onClick={connectGmail}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-brand-600 px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition-all hover:bg-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:ring-offset-2 dark:focus:ring-offset-zinc-950"
+          >
+            Connect Gmail
+          </button>
+        </div>
+      )}
 
       {error && (
         <div
@@ -442,7 +581,7 @@ function App() {
                 {messages.map((msg, i) => (
                   <div
                     key={i}
-                    className={`flex opacity-0 animate-[fadeIn_0.3s_ease-out_forwards] ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                    className={`flex flex-col opacity-0 animate-[fadeIn_0.3s_ease-out_forwards] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}
                   >
                     <div
                       className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${
@@ -467,6 +606,23 @@ function App() {
                         msg.content
                       )}
                     </div>
+                    {msg.role === 'assistant' && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const { subject, body } = parseEmailDraft(msg.content)
+                          setComposeEmail({ to: '', subject, body })
+                          setEmailSentSuccess(false)
+                          setEmailError('')
+                        }}
+                        className="mt-1 flex items-center gap-1 text-xs text-zinc-400 transition-colors hover:text-zinc-600 dark:hover:text-zinc-300"
+                      >
+                        <svg className="size-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden>
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                        Send as email
+                      </button>
+                    )}
                   </div>
                 ))}
                 {chatLoading && (
@@ -522,6 +678,84 @@ function App() {
             </div>
             <p className="mt-2 text-xs text-zinc-400 dark:text-zinc-500">Press Enter to send · Shift+Enter for a new line</p>
           </section>
+        </div>
+      )}
+      {composeEmail && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={(e) => { if (e.target === e.currentTarget) setComposeEmail(null) }}
+        >
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl dark:bg-zinc-900">
+            <h2 className="mb-4 text-lg font-semibold text-zinc-900 dark:text-zinc-50">Send Email</h2>
+
+            <div className="space-y-3">
+              <div>
+                <label className="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">To</label>
+                <input
+                  type="email"
+                  placeholder="recipient@example.com"
+                  value={composeEmail.to}
+                  onChange={(e) => setComposeEmail((c) => c ? { ...c, to: e.target.value } : null)}
+                  className="w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800 placeholder:text-zinc-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">Subject</label>
+                <input
+                  type="text"
+                  placeholder="Subject"
+                  value={composeEmail.subject}
+                  onChange={(e) => setComposeEmail((c) => c ? { ...c, subject: e.target.value } : null)}
+                  className="w-full rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-sm text-zinc-800 placeholder:text-zinc-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">Body</label>
+                <textarea
+                  rows={10}
+                  value={composeEmail.body}
+                  onChange={(e) => setComposeEmail((c) => c ? { ...c, body: e.target.value } : null)}
+                  className="w-full resize-y rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 font-mono text-sm text-zinc-800 placeholder:text-zinc-400 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/30 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100"
+                />
+              </div>
+            </div>
+
+            {emailError && (
+              <div role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800 dark:border-red-900/50 dark:bg-red-950/50 dark:text-red-200">
+                {emailError}
+              </div>
+            )}
+
+            {emailSentSuccess && (
+              <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/50 dark:text-emerald-200">
+                Email sent successfully!
+              </div>
+            )}
+
+            {!gmailToken && (
+              <p className="mt-3 text-xs text-amber-600 dark:text-amber-400">
+                Connect Gmail above to enable sending.
+              </p>
+            )}
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setComposeEmail(null)}
+                className="rounded-lg border border-zinc-200 bg-zinc-50 px-4 py-2 text-sm font-medium text-zinc-700 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={sendViaGmail}
+                disabled={sendingEmail || !(composeEmail?.to.trim()) || !gmailToken}
+                className="flex items-center gap-2 rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all hover:bg-brand-500 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {sendingEmail ? <><Spinner /> Sending…</> : 'Send'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

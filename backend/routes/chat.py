@@ -30,5 +30,5 @@ Answer questions about this meeting helpfully and concisely. When asked to draft
         role = "user" if msg.role == "user" else "model"
         contents.append(types.Content(role=role, parts=[types.Part(text=msg.content)]))
 
-    response = client.models.generate_content(model="gemini-3.5-flash", contents=contents)
+    response = client.models.generate_content(model="gemini-3.1-flash-lite", contents=contents)
     return {"reply": response.text}

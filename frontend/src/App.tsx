@@ -29,7 +29,7 @@ function App() {
       setAnalysis(data)
       setLastAnalysisMode(analysisMode)
     } catch {
-      setError('Failed to analyse transcript. Is the backend running?')
+      setError('Failed to analyse transcript. Please try again.')
     } finally {
       setLoading(false)
     }

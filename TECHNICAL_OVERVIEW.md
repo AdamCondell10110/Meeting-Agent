@@ -918,6 +918,6 @@ The `types` module provides strongly-typed Python classes for the Gemini API's m
 
 **Context construction** — the `context` f-string embeds both the raw transcript and the structured analysis fields. Providing both is deliberate: the raw transcript contains nuance (tone, exact quotes, names) that the structured analysis may have summarised away, but the structured analysis provides clear signals about what was decided and who owns what. The model can draw from both when answering questions.
 
-### Why Gemini 2.5 Flash
+### Why Gemini 3.5 Flash
 
-Gemini 2.5 Flash is a mid-tier model optimised for speed and cost over raw capability. For structured extraction from meeting transcripts — a well-defined, factual task — it performs comparably to larger models at a fraction of the latency and cost.
+Gemini 3.5 Flash is a mid-tier model optimised for speed and cost over raw capability. For structured extraction from meeting transcripts — a well-defined, factual task — it performs comparably to larger models at a fraction of the latency and cost.

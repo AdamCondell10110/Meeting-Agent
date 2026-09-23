@@ -16,7 +16,7 @@ https://meeting-agent-weld.vercel.app/
 ## Tech Stack
 - Frontend: React, TypeScript, Vite, Tailwind CSS
 - Backend: Python, FastAPI
-- AI: Google Gemini 3.1 Flash Lite
+- AI: Google Gemini 3.5  Flash Lite
 - Deployed on Vercel
 
 ## Project Structure

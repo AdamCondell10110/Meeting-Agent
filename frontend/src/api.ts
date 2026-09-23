@@ -1,7 +1,7 @@
 import type { Analysis, AnalysisMode, Message } from './types'
 
 export async function analyseTranscript(transcript: string, mode: AnalysisMode): Promise<Analysis> {
-  const response = await fetch('https://meeting-agent-production-ba4f.up.railway.app/analyse', {
+  const response = await fetch('https://meeting-agent-4eqe-six.vercel.app/analyse', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ transcript, mode }),
@@ -15,7 +15,7 @@ export async function sendChatMessage(
   analysis: Analysis,
   messages: Message[]
 ): Promise<string> {
-  const response = await fetch('https://meeting-agent-production-ba4f.up.railway.app/chat', {
+  const response = await fetch('https://meeting-agent-4eqe-six.vercel.app/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ transcript, analysis, messages }),
